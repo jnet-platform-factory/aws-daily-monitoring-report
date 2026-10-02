@@ -1,0 +1,21 @@
+version = 0.1
+
+# Generic defaults only. The target account comes from your credentials, not
+# from this file, and per-account values (emails, snapshot bucket, slug) are
+# parameters you pass at deploy time:
+#
+#   sam build
+#   sam deploy --parameter-overrides RecipientEmail=ops@example.com SenderEmail=reports@example.com
+#
+# Keep per-account config out of this public repository: put it in a
+# git-ignored samconfig.local.toml and pass --config-file samconfig.local.toml.
+
+[default.build.parameters]
+cached = true
+
+[default.deploy.parameters]
+stack_name = "aws-daily-monitoring-report"
+capabilities = "CAPABILITY_IAM"
+resolve_s3 = true
+confirm_changeset = true
+fail_on_empty_changeset = false

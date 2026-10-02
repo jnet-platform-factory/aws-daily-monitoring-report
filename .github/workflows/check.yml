@@ -1,0 +1,33 @@
+name: Check
+
+# Every gate that needs no AWS credentials, on every pull request and push.
+# Nothing here deploys or publishes.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+      - run: pip install -r tests/requirements.txt
+      - name: Leak check
+        env:
+          # Optional organisation-specific terms, kept out of the repository.
+          LEAK_CHECK_DENY: ${{ secrets.LEAK_CHECK_DENY }}
+        run: make leak-check
+      - run: make test
+      - run: make check-metadata
+      - run: make validate

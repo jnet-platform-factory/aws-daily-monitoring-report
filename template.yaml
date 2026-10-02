@@ -1,0 +1,188 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  AWS daily monitoring report. A scheduled Lambda that emails one account's
+  health -- CloudWatch alarms, Cost Explorer spend, Lambda, EventBridge and RDS
+  -- via SES, and optionally publishes the same data as a JSON snapshot to S3.
+
+Metadata:
+  AWS::ServerlessRepo::Application:
+    Name: aws-daily-monitoring-report
+    # SAR caps this at 256 characters, counted after YAML folds the block into
+    # one line. `sam publish` rejects a longer one outright -- and does so after
+    # build and package. scripts/check-sar-metadata.py catches it in seconds.
+    Description: >
+      A daily email of one AWS account's health: active alarms, 30-day cost
+      trend, Lambda errors and throttles, EventBridge rule activity and RDS
+      load. Optionally publishes the same data as a JSON snapshot to S3.
+    Author: JunctionNet
+    SpdxLicenseId: Apache-2.0
+    LicenseUrl: LICENSE.txt
+    ReadmeUrl: README.md
+    Labels: ["monitoring", "cost", "cloudwatch", "ses", "report", "serverless"]
+    HomePageUrl: https://github.com/jnet-platform-factory/aws-daily-monitoring-report
+    # A published SemanticVersion is immutable. Bump before every publish.
+    SemanticVersion: 1.0.0
+    SourceCodeUrl: https://github.com/jnet-platform-factory/aws-daily-monitoring-report
+
+Parameters:
+  RecipientEmail:
+    Type: String
+    AllowedPattern: ".+@.+"
+    ConstraintDescription: an email address
+    Description: >
+      SES "To" address for the report. While the account's SES is in the
+      sandbox it must be a verified identity too.
+  SenderEmail:
+    Type: String
+    AllowedPattern: ".+@.+"
+    ConstraintDescription: an email address
+    Description: SES "From" address for the report. Must be a verified SES identity in this region.
+  AccountName:
+    Type: String
+    Default: ""
+    Description: >
+      Friendly name for the report title, e.g. "Production". Empty uses the IAM
+      account alias, then the account id.
+  FunctionNameSuffix:
+    Type: String
+    Default: ""
+    AllowedPattern: "^[a-zA-Z0-9-]*$"
+    Description: >
+      Appended to the function name, which is otherwise
+      aws-daily-monitoring-report. Needed only when two stacks share one account
+      and region (one per stage, say): e.g. "-dev".
+  ScheduleExpression:
+    Type: String
+    Default: cron(0 10 * * ? *)
+    Description: EventBridge schedule for the report. The default is 10:00 UTC daily.
+  ScheduleEnabled:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Whether the schedule is enabled. 'false' still lets you invoke the function by hand.
+  MonitoringRegion:
+    Type: String
+    Default: ""
+    Description: The region the report covers. Empty means the region the stack is deployed in.
+  EventBusName:
+    Type: String
+    Default: default
+    Description: >
+      EventBridge bus whose rules are sampled. A bus that does not exist in this
+      account is reported as unavailable rather than failing the run.
+  SnapshotBucket:
+    Type: String
+    Default: ""
+    Description: >
+      Existing S3 bucket to publish the JSON snapshot to, as
+      <SnapshotPrefix><SnapshotSlug>.json. Opt-in: empty means email only. The
+      bucket is not created here. In another account, its bucket policy must
+      grant this account s3:PutObject and s3:PutObjectAcl on the prefix first,
+      or every write fails with 403 while the email still sends.
+  SnapshotPrefix:
+    Type: String
+    Default: snapshots/
+    AllowedPattern: "^$|^.*/$"
+    ConstraintDescription: empty, or ending with a slash
+    Description: Key prefix inside SnapshotBucket. Must end with a slash.
+  SnapshotSlug:
+    Type: String
+    Default: ""
+    AllowedPattern: "^[a-zA-Z0-9._-]*$"
+    Description: >
+      Object basename, and the key a dashboard looks this account up by, e.g.
+      "production". Required when SnapshotBucket is set: the function refuses to
+      publish without one rather than falling back to the account id, so two
+      stacks in one account can never overwrite each other.
+
+Conditions:
+  HasSnapshotBucket: !Not [!Equals [!Ref SnapshotBucket, ""]]
+
+Globals:
+  Function:
+    Runtime: python3.13
+    Timeout: 300
+    MemorySize: 512
+
+Resources:
+  DailyReportFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "aws-daily-monitoring-report${FunctionNameSuffix}"
+      CodeUri: app/
+      Handler: src.handler.lambda_handler
+      Description: Emails a daily AWS monitoring report via SES
+      Environment:
+        Variables:
+          RECIPIENT_EMAIL: !Ref RecipientEmail
+          SENDER_EMAIL: !Ref SenderEmail
+          ACCOUNT_NAME: !Ref AccountName
+          MONITORING_REGION: !Ref MonitoringRegion
+          EVENT_BUS_NAME: !Ref EventBusName
+          SNAPSHOT_BUCKET: !Ref SnapshotBucket
+          SNAPSHOT_PREFIX: !Ref SnapshotPrefix
+          SNAPSHOT_SLUG: !Ref SnapshotSlug
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cloudwatch:DescribeAlarms
+                - cloudwatch:GetMetricStatistics
+                - cloudwatch:ListMetrics
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - ce:GetCostAndUsage
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - lambda:ListFunctions
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - rds:DescribeDBInstances
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - events:ListRules
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - ses:SendEmail
+                # Distinct action — the report is sent as raw MIME so the
+                # snapshot can ride along as a .json attachment.
+                - ses:SendRawEmail
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - sts:GetCallerIdentity
+                - iam:ListAccountAliases
+              Resource: "*"
+            - !If
+              - HasSnapshotBucket
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                Resource: !Sub "arn:${AWS::Partition}:s3:::${SnapshotBucket}/${SnapshotPrefix}*"
+              - !Ref AWS::NoValue
+      Events:
+        DailySchedule:
+          Type: Schedule
+          Properties:
+            Schedule: !Ref ScheduleExpression
+            Description: Daily AWS monitoring report
+            Enabled: !Ref ScheduleEnabled
+
+Outputs:
+  DailyReportFunctionArn:
+    Description: ARN of the daily monitoring report Lambda.
+    Value: !GetAtt DailyReportFunction.Arn
+  DailyReportFunctionName:
+    Description: Name of the daily monitoring report Lambda — invoke it to send a report now.
+    Value: !Ref DailyReportFunction
+  SnapshotUrl:
+    Condition: HasSnapshotBucket
+    Description: Where the snapshot is written.
+    Value: !Sub "s3://${SnapshotBucket}/${SnapshotPrefix}${SnapshotSlug}.json"

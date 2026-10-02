@@ -1,0 +1,6 @@
+# No third-party dependencies. The handler uses only boto3, which the Lambda
+# Python runtime provides.
+#
+# Anything added here is pinned exactly, not ranged: this is a published
+# artifact, so the bytes a deployment gets must be the bytes that were tested.
+# scripts/check-build.py then asserts each one is present in the built artifact.

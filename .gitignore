@@ -1,0 +1,13 @@
+.aws-sam/
+packaged.yaml
+samconfig.local.toml
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.DS_Store
+.idea/
+.vscode/
+# Optional extra deny-list for scripts/leak-check.py. Never commit it: it names
+# what must not be published.
+.leak-check-deny
