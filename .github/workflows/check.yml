@@ -24,10 +24,31 @@ jobs:
           use-installer: true
       - run: pip install -r tests/requirements.txt
       - name: Leak check
+        id: leak
         env:
           # Optional organisation-specific terms, kept out of the repository.
           LEAK_CHECK_DENY: ${{ secrets.LEAK_CHECK_DENY }}
         run: make leak-check
-      - run: make test
-      - run: make check-metadata
-      - run: make validate
+      - id: test
+        env:
+          # A JUnit copy of the results for the summary; the Makefile is unchanged.
+          PYTEST_ADDOPTS: --junitxml=${{ runner.temp }}/junit/pytest.xml
+        run: make test
+      - id: metadata
+        run: make check-metadata
+      - id: validate
+        run: make validate
+      - name: Summary
+        if: always()
+        continue-on-error: true
+        uses: jnet-platform-factory/.github/actions/job-summary@v0.0.1
+        with:
+          title: Check
+          status: ${{ job.status }}
+          rows: |
+            Branch: ${{ github.head_ref || github.ref_name }}
+            Leak check: ${{ steps.leak.outcome == 'success' && '✅ passed' || steps.leak.outcome == 'failure' && '❌ failed' || steps.leak.outcome == 'skipped' && '⏭️ skipped' || '🚫 cancelled' }}
+            Unit tests: ${{ steps.test.outcome == 'success' && '✅ passed' || steps.test.outcome == 'failure' && '❌ failed' || steps.test.outcome == 'skipped' && '⏭️ skipped' || '🚫 cancelled' }}
+            SAR metadata: ${{ steps.metadata.outcome == 'success' && '✅ passed' || steps.metadata.outcome == 'failure' && '❌ failed' || steps.metadata.outcome == 'skipped' && '⏭️ skipped' || '🚫 cancelled' }}
+            sam validate: ${{ steps.validate.outcome == 'success' && '✅ passed' || steps.validate.outcome == 'failure' && '❌ failed' || steps.validate.outcome == 'skipped' && '⏭️ skipped' || '🚫 cancelled' }}
+          junit: ${{ runner.temp }}/junit/*.xml
