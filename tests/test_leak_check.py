@@ -29,6 +29,7 @@ MUST_CATCH = [
     (f"arn:aws:iam::{SOME_ACCOUNT}:root", "an AWS account id"),
     (f"account {SOME_ACCOUNT}", "an AWS account id"),
     (f"Default: someone{AT}realcompany.io", "an email address"),
+    (f"owner: first.last{AT}mail.realcompany.co.uk", "an email address"),
     ("AKIA" + "IOSFODNN7EXAMPLE", "an AWS key id"),
     ("-----BEGIN RSA " + "PRIVATE KEY-----", "a private key"),
     ("aws_secret_" + "access_key = hunter2", "a credential assignment"),
@@ -52,6 +53,8 @@ MUST_NOT_CATCH = [
     "10.0.0.0/16",
     "timestamp 1727690400123",  # 13 digits: not an account id
     "version 2026.09.30",
+    f"uses: owner/.github/actions/job-summary{AT}v0.0.1",  # a pinned action, not an address
+    f"uses: actions/checkout{AT}v4.1.0",
 ]
 
 

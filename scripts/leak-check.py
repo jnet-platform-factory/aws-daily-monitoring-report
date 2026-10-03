@@ -41,7 +41,10 @@ PLACEHOLDER_ACCOUNT_IDS = {"123456789012", "111122223333", "444455556666", "0000
 EXAMPLE_EMAIL_DOMAINS = re.compile(r"@(?:[\w-]+\.)*(?:example\.(?:com|org|net)|example|test|invalid|localhost)$", re.I)
 
 ACCOUNT_ID = re.compile(r"(?<![\w.-])\d{12}(?![\w-])")
-EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+# The last label must be alphabetic, as every real top-level domain is; without
+# that, a pinned action reference such as `actions/checkout@v4.1.0` reads as an
+# address on the domain "v4.1.0".
+EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,}(?![\w-])")
 
 PATTERNS = [
     (re.compile(r"\b(AKIA|ASIA|AIDA|AROA|AGPA|AIPA|ANPA|ANVA)[A-Z0-9]{16}\b"), "an AWS key id"),
